@@ -157,6 +157,7 @@ protected:
 
 // Operations
 public:
+	void HidePage(int nPage);
 	void RemoveView(int nItem);		// Removes a view
 	void RemoveView(CView * pView); // Removes a view
 	UINT GetPageID(int nPage);		// Get the ID of the page
@@ -171,13 +172,19 @@ public:
 	// Set the height of the tab font (9 is a good value)
 	void SetFontHeight(int nHeight);
 
+	// Shows a page
 
-	virtual BOOL PreCreateWindow(CREATESTRUCT& cs);
 
 // Overrides
 	// ClassWizard generated virtual function overrides
 	//{{AFX_VIRTUAL(CTabView)
+	public:
+	virtual void DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct);
+	virtual BOOL OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pLResult);
+	virtual BOOL OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo);
 	protected:
+	virtual void PreSubclassWindow();
+	virtual void OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint);
 	//}}AFX_VIRTUAL
 
 // Implementation
@@ -190,6 +197,8 @@ protected:
 
 	// Generated message map functions
 protected:
+//	CWnd * m_pDummyWnd;
+	CFrameWnd * m_pMainFrame;
 	void RecalcLayout(CWnd *pCurWnd = NULL);	// Fits the view into the client area of the tab
 	UINT GetNewPageID(int nPage);				// Gets a new available ID for a page
 
@@ -199,6 +208,8 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnSelChange(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnSelChanging(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
+	afx_msg void OnContextMenu(CWnd* pWnd, CPoint point);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

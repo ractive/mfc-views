@@ -2,7 +2,6 @@
 //
 
 #include "stdafx.h"
-#include "DockView.h"
 #include "DockViewWnd.h"
 #include <afxpriv.h>
 #include "ViewBar.h"
@@ -68,6 +67,7 @@ BEGIN_MESSAGE_MAP(CDockViewWnd, CWnd)
 	//{{AFX_MSG_MAP(CDockViewWnd)
 		// NOTE - the ClassWizard will add and remove mapping macros here.
 	//}}AFX_MSG_MAP
+	ON_MESSAGE_VOID(WM_INITIALUPDATE, OnInitialUpdate)
 END_MESSAGE_MAP()
 
 
@@ -109,7 +109,7 @@ BOOL CDockViewWnd::Create(CWnd* pParentWnd, CCreateContext* pContext, UINT nID)
 	m_pCreateContext = pContext;
 
 
-	return TRUE;	
+	return TRUE;
 }
 
 
@@ -126,9 +126,9 @@ BOOL CDockViewWnd::RegisterAsMDI(LONG fToRegister)
 	// common initialization
 	WNDCLASS wndcls;
 	memset(&wndcls, 0, sizeof(WNDCLASS));   // start with NULL defaults
-	wndcls.lpfnWndProc = AfxGetAfxWndProc();
+	wndcls.lpfnWndProc = ::DefWindowProc;
 	wndcls.hInstance = AfxGetInstanceHandle();
-	wndcls.hCursor = LoadCursor(AfxGetInstanceHandle(), IDC_ARROW);
+	wndcls.hCursor = ::LoadCursor(NULL, IDC_WAIT);
 
 	INITCOMMONCONTROLSEX init;
 	init.dwSize = sizeof(init);
@@ -159,7 +159,7 @@ BOOL CDockViewWnd::RegisterAsMDI(LONG fToRegister)
 
 }
 
-BOOL CDockViewWnd::CreateView(CRuntimeClass *pViewClass)
+BOOL CDockViewWnd::CreateView(UINT nView, LPCTSTR lpszBarTitle, CRuntimeClass *pViewClass)
 {
 #ifdef _DEBUG
 	ASSERT_VALID(this);
@@ -191,7 +191,8 @@ BOOL CDockViewWnd::CreateView(CRuntimeClass *pViewClass)
 
 	// Create a new bar
 	CViewBar *pViewBar = new CViewBar();
-	if (!pViewBar->Create("Hello", GetParent(), m_uLastID)) {
+
+	if (!pViewBar->Create(lpszBarTitle, GetParent(), m_uLastID)) {
 		return FALSE;
 	}
 
@@ -203,26 +204,45 @@ BOOL CDockViewWnd::CreateView(CRuntimeClass *pViewClass)
 	// Add the bar to our map
 	m_aBars.SetAt(m_uLastID, pViewBar);
 	
+	m_aPageIDs.SetAt(nView, m_uLastID);
+
 	m_uLastID++;
 
 	return TRUE;
 }
 
-CWnd * CDockViewWnd::GetActiveView()
+CView * CDockViewWnd::GetActiveView()
 {
 	ASSERT_VALID(this);
 
 	// attempt to use active view of frame window
-	CWnd* pView = NULL;
+	CView* pView = NULL;
 	CFrameWnd* pFrameWnd = GetParentFrame();
-	ASSERT_VALID(pFrameWnd);
+
+	if (pFrameWnd == NULL) {
+		return NULL;
+	}
+	
 	pView = pFrameWnd->GetActiveView();
 
-	// failing that, use the current focus
-	if (pView == NULL)
-		pView = GetFocus();
+	// If this is successful, we return this view
+	if (pView) {
+		return pView;
+	}
 
-	return pView;
+	// Otherwise we walk through all bars to find the active one
+	POSITION pos = GetFirstBar();
+	while (pos) {
+		CViewBar * pBar = GetNextBar(pos);
+		if (pBar->GetSafeHwnd() && pBar->IsActive()) {
+			// We found the actiev bar.
+			// Returnr the associated view
+			pView = pBar->GetView();
+			return pView;
+		}
+	}
+
+	return NULL;
 }
 
 POSITION CDockViewWnd::GetFirstBar()
@@ -238,4 +258,86 @@ CViewBar * CDockViewWnd::GetNextBar(POSITION &pos)
 
 	return pViewBar;
 }
+
+
+CView * CDockViewWnd::GetView(UINT nView)
+{
+	CViewBar * pBar = GetBar(nView);
+	return pBar->GetView();
+}
+
+CViewBar * CDockViewWnd::GetBar(UINT nBar)
+{
+	UINT nPageID = 0;
+	m_aPageIDs.Lookup(nBar, nPageID);
+	CViewBar * pBar = NULL;
+	m_aBars.Lookup(nPageID, (LPVOID &)pBar);
+	
+	return pBar;
+}
+
+void CDockViewWnd::OnInitialUpdate()
+{
+	// Floating dockbars have a CMiniFrameWnd as parent
+	// If they are initially floating, the views won't
+	// receive the WM_INITIALUPDATE message.
+
+	// We catch this message here and route it to the
+	// floating views
+
+	POSITION pos = GetFirstBar();
+	while (pos) {
+		CViewBar * pBar = GetNextBar(pos);
+		if (pBar->IsFloating()) {
+			//pBar->GetView()->SendMessage(WM_INITIALUPDATE);
+			pBar->GetView()->OnInitialUpdate();
+		}
+	}
+}
+
+
+BOOL CDockViewWnd::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo) 
+{
+	// Route the command messages through the views
+	// If the bar is floating
+
+	CView * pActiveView = GetActiveView();
+	if (pActiveView->GetSafeHwnd() && pActiveView->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo)) {
+		return TRUE;
+	}
+	
+	POSITION pos = GetFirstBar();
+	while (pos) {
+		CViewBar * pBar = (CViewBar *)GetNextBar(pos);
+		if (!pBar->IsFloating() || !pBar->IsActive()) {
+			continue;
+		}
+		CView * pView = pBar->GetView();
+		if (pView->GetSafeHwnd() && pView->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo)) {
+			return TRUE;
+		}
+	}
+	
+	return FALSE;
+}
+
+
+//DEL BOOL CDockViewWnd::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult) 
+//DEL {
+//DEL 	if (CWnd::OnNotify(wParam, lParam, pResult))
+//DEL 		return TRUE;
+//DEL 
+//DEL 	// route commands to the splitter to the parent frame window
+//DEL 	*pResult = GetParentFrame()->SendMessage(WM_NOTIFY, wParam, lParam);
+//DEL 	return TRUE;
+//DEL }
+
+//DEL BOOL CDockViewWnd::OnCommand(WPARAM wParam, LPARAM lParam) 
+//DEL {
+//DEL 	if (CWnd::OnCommand(wParam, lParam))
+//DEL 		return TRUE;
+//DEL 
+//DEL 	// route commands to the splitter to the parent frame window
+//DEL 	return GetParentFrame()->SendMessage(WM_COMMAND, wParam, lParam);
+//DEL }
 

@@ -31,6 +31,7 @@ BEGIN_MESSAGE_MAP(CMyTreeView, CTreeView)
 	ON_NOTIFY_REFLECT(TVN_SELCHANGED, OnSelchanged)
 	ON_WM_CREATE()
 	ON_WM_DESTROY()
+	ON_NOTIFY_REFLECT(TVN_BEGINLABELEDIT, OnBeginlabeledit)
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
@@ -173,4 +174,12 @@ void CMyTreeView::OnDestroy()
 	
 	// TODO: Add your message handler code here
 	
+}
+
+void CMyTreeView::OnBeginlabeledit(NMHDR* pNMHDR, LRESULT* pResult) 
+{
+	TV_DISPINFO* pTVDispInfo = (TV_DISPINFO*)pNMHDR;
+	// TODO: Add your control notification handler code here
+//	GetTreeCtrl().GetEditControl()->Dump(afxDump);
+	*pResult = 0;
 }

@@ -145,3 +145,20 @@ void CTabViewTestApp::OnAppAbout()
 	CAboutDlg aboutDlg;
 	aboutDlg.DoModal();
 }
+
+BOOL CTabViewTestApp::PreTranslateMessage(MSG* pMsg) 
+{
+	// TODO: Add your specialized code here and/or call the base class
+	if (pMsg->message == WM_LBUTTONDOWN) {
+		CWnd * p = CWnd::FromHandle(pMsg->hwnd);
+		int x = 2;
+	}
+	return CWinApp::PreTranslateMessage(pMsg);
+}
+
+void CTabViewTestApp::AddToRecentFileList(LPCTSTR lpszPathName) 
+{
+	// TODO: Add your specialized code here and/or call the base class
+	
+	CWinApp::AddToRecentFileList(lpszPathName);
+}

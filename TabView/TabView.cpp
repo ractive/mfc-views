@@ -11,7 +11,7 @@
 
 #include "stdafx.h"
 #include "TabView.h"
-#include <afxpriv.h> // Only used for the definition of WM_INITIALUPDATE :-(
+#include <afxpriv.h> // Use for WM_INITIALUPDATE and WM_SIZEPARENT
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -31,17 +31,14 @@ BEGIN_MESSAGE_MAP(CTabView, CCtrlView)
 	ON_WM_SIZE()
 	ON_NOTIFY_REFLECT (TCN_SELCHANGE, OnSelChange)
 	ON_NOTIFY_REFLECT (TCN_SELCHANGING, OnSelChanging)
+	ON_WM_CREATE()
+	ON_WM_CONTEXTMENU()
 	//}}AFX_MSG_MAP
 END_MESSAGE_MAP()
 
 CTabView::~CTabView()
 {
 	m_Font.DeleteObject();
-}
-
-BOOL CTabView::PreCreateWindow(CREATESTRUCT& cs)
-{
-	return CCtrlView::PreCreateWindow(cs);
 }
 
 void CTabView::RemoveImageList()
@@ -64,6 +61,28 @@ void CTabView::OnDestroy()
 	CCtrlView::OnDestroy();
 }
 
+BOOL CTabView::OnChildNotify(UINT message, WPARAM wParam, LPARAM lParam, LRESULT* pLResult) 
+{
+	if (message != WM_DRAWITEM)
+		return CCtrlView::OnChildNotify(message, wParam, lParam, pLResult);
+
+	ASSERT(pLResult == NULL);       // no return value expected
+	UNUSED(pLResult); // unused in release builds
+
+	DrawItem((LPDRAWITEMSTRUCT)lParam);
+	return TRUE;	
+}
+
+void CTabView::PreSubclassWindow() 
+{
+ 	CCtrlView::PreSubclassWindow();
+	ModifyStyle(0, TCS_OWNERDRAWFIXED);
+}
+
+void CTabView::DrawItem(LPDRAWITEMSTRUCT lpDrawItemStruct) 
+{
+	ASSERT(FALSE); // Override this function!!!
+}
 
 /////////////////////////////////////////////////////////////////////////////
 // CTabView operations
@@ -149,7 +168,8 @@ int CTabView::Insert(int nPage, LPCTSTR lpszItemText, CRuntimeClass *pNewWnd, CC
 
 	// Try to create the new page dynamically
 	DWORD dwStyle = WS_CHILD | WS_CLIPCHILDREN | WS_BORDER | WS_VISIBLE;
-	if (!pWnd->Create(NULL, NULL, dwStyle, CRect(0, 0, 0, 0), GetParentFrame(), GetNewPageID(nPage), pContext)) {
+
+	if (!pWnd->Create(NULL, NULL, dwStyle, CRect(0, 0, 0, 0), this, GetNewPageID(nPage), pContext)) {
 		return -1;
 	}
 
@@ -184,9 +204,11 @@ int CTabView::Insert(int nPage, LPCTSTR lpszItemText, CRuntimeClass *pNewWnd, CC
 	
 	// If it the first tab, we activte the view and have to call RecalcLayout
 	if (tab.GetItemCount() == 1) {
-		GetParentFrame()->SetActiveView(pWnd);
+		m_pMainFrame->SetActiveView(pWnd);
 		RecalcLayout(pWnd);
 	}
+
+	pWnd->SetOwner(m_pMainFrame);
 
 	return nPage;
 }
@@ -222,22 +244,19 @@ void CTabView::OnSelChange (NMHDR* pNMHDR, LRESULT* pResult)
 	if (nSel == -1)
 		return;
 
-	CWnd * pWnd = NULL;
-	// Get the associated window
-	m_aPages.Lookup(nSel, (LPVOID &)pWnd);
-	if (pWnd) {
-		// Show the new selected window
-		pWnd->ShowWindow(SW_SHOW);
-		RecalcLayout(pWnd);
-
-		ASSERT(pWnd->IsKindOf(RUNTIME_CLASS(CView)));
-		
-		// Set the view as the active view
-		CFrameWnd * pFrameWnd = GetParentFrame();
-		if (pFrameWnd) {
-			pFrameWnd->SetActiveView((CView *)pWnd, TRUE);
-		}
-	}
+ 	CWnd * pWnd = NULL;
+ 	// Get the associated window
+ 	m_aPages.Lookup(nSel, (LPVOID &)pWnd);
+ 	if (pWnd) {
+ 		// Show the new selected window
+ 		pWnd->ShowWindow(SW_SHOW);
+ 		RecalcLayout(pWnd);
+ 
+ 		ASSERT(pWnd->IsKindOf(RUNTIME_CLASS(CView)));
+ 		
+ 		// Set the view as the active view
+ 		m_pMainFrame->SetActiveView((CView *)pWnd, TRUE);
+ 	}
 
 	if (pResult) {
 		*pResult = 0;
@@ -253,14 +272,7 @@ void CTabView::OnSelChanging(NMHDR* pNMHDR, LRESULT* pResult)
 	if (nSel == -1)
 		return;
 
-	CWnd * pWnd = NULL;
-	// Get the associated window
-
-	m_aPages.Lookup(nSel, (LPVOID &)pWnd);
-	if (pWnd) {
-		// Hide the old selected window
-		pWnd->ShowWindow(SW_HIDE);
-	}
+	HidePage(nSel);
 
 	if (pResult) {
 		*pResult = 0;
@@ -293,22 +305,12 @@ void CTabView::RecalcLayout(CWnd *pCurWnd /* = NULL */)
 	if (pCurWnd) {
 		CRect rc;
 		GetClientRect(rc);
-		// Adjust the size to the tab
+
+		// Adjust the size to the tab's client rect
 		tab.AdjustRect(FALSE, rc);
 
-		CRect tabRect, wRect;
-		tab.GetWindowRect(tabRect);
-		CFrameWnd * pFrameWnd = GetParentFrame();
-		pFrameWnd->GetClientRect(wRect);
-		pFrameWnd->ClientToScreen(wRect);
-		
-		// Move the view down that if fits in the tab
-		rc.OffsetRect(1, tabRect.top - wRect.top + 1);
-
-		// And set the window position of the view that it fits (MoveWindow doesn't work...)
-		pCurWnd->SetWindowPos(NULL, rc.left, rc.top, rc.Width(), rc.Height(), SWP_SHOWWINDOW);
+		pCurWnd->MoveWindow(rc);
 	}
-
 }
 
 CView * CTabView::GetView(int nView)
@@ -396,3 +398,73 @@ void CTabView::RemoveView(CView *pView)
 
 }
 
+
+int CTabView::OnCreate(LPCREATESTRUCT lpCreateStruct) 
+{
+	if (CCtrlView::OnCreate(lpCreateStruct) == -1)
+		return -1;
+	
+	m_pMainFrame = GetParentFrame();
+
+	return 0;
+}
+
+void CTabView::OnUpdate(CView* pSender, LPARAM lHint, CObject* pHint) 
+{
+	// TODO: Add your specialized code here and/or call the base class
+	
+	
+}
+
+void CTabView::HidePage(int nPage)
+{
+	CWnd * pWnd = NULL;
+	// Get the associated window
+
+	m_aPages.Lookup(nPage, (LPVOID &)pWnd);
+	if (pWnd) {
+		// Hide the old selected window
+		pWnd->ShowWindow(SW_HIDE);
+	}
+}
+
+void CTabView::OnContextMenu(CWnd* pWnd, CPoint point) 
+{
+	// This is strange. All contextmenues work well, besides that of the treeviews
+	// We catch this message here and resend it to the selected view.
+	int nSel = GetTabCtrl().GetCurSel();
+	if (nSel == -1) {
+		return;
+	}
+
+	CView *pView = GetView(nSel);
+
+	if (pView) {
+		pView->SendMessage(WM_CONTEXTMENU, (WPARAM)pWnd->m_hWnd, MAKELPARAM(point.x, point.y));
+	}
+}
+
+BOOL CTabView::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* pHandlerInfo) 
+{
+	// Route all command messages through the views
+	
+	CTabCtrl &tab = GetTabCtrl();
+
+	POSITION pos = m_aPages.GetStartPosition();
+	while (pos) {
+		unsigned short nPage = 0;
+		CWnd * pWnd = NULL;
+		m_aPages.GetNextAssoc(pos, nPage, (LPVOID &)pWnd);
+		if (pWnd->GetSafeHwnd() && ::IsWindow(pWnd->m_hWnd)) {
+			if (pWnd->OnCmdMsg(nID, nCode, pExtra, pHandlerInfo)) {
+				// The view handled the messages
+				return TRUE;
+			}
+		}
+
+	}
+
+	// No view handled the message.
+	
+	return CCtrlView::OnCmdMsg(nID, nCode, pExtra, pHandlerInfo);
+}

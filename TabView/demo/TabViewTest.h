@@ -29,6 +29,8 @@ public:
 	//{{AFX_VIRTUAL(CTabViewTestApp)
 	public:
 	virtual BOOL InitInstance();
+	virtual BOOL PreTranslateMessage(MSG* pMsg);
+	virtual void AddToRecentFileList(LPCTSTR lpszPathName);
 	//}}AFX_VIRTUAL
 
 // Implementation
